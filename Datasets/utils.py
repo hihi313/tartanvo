@@ -6,6 +6,9 @@ import numpy as np
 import numbers
 import cv2
 import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+import matplotlib.animation as animation
+
 import os
 if (not ("DISPLAY" in os.environ)):
     plt.switch_backend('agg')
@@ -298,3 +301,17 @@ def load_kiiti_intrinsics(filename):
         cam_intrinsics[5]), float(cam_intrinsics[2]), float(cam_intrinsics[6])
 
     return focalx, focaly, centerx, centery
+
+def show_dataloader_images(dataloader: torch.utils.data.DataLoader, interval: int = 20):
+    frames = []  # for storing the generated images
+    fig = plt.figure()
+
+    for batch in dataloader:
+        img0 = batch["img1"]
+        img1 = batch["img2"]
+        for i0, i1 in zip(img0, img1):
+            frames.append([plt.imshow(i0, animated=True)])
+            frames.append([plt.imshow(i1, animated=True)])
+
+    ani = animation.ArtistAnimation(fig, frames, interval=interval, blit=True, repeat=False)
+    plt.show()

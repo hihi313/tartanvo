@@ -34,6 +34,8 @@ import torch
 import numpy as np
 import time
 
+from color_print import bcolors, print_color
+
 np.set_printoptions(precision=4, suppress=True, threshold=10000)
 
 from Network.VONet import VONet
@@ -47,6 +49,8 @@ class TartanVO(object):
         if model_name.endswith('.pkl'):
             modelname = 'models/' + model_name
             self.load_model(self.vonet, modelname)
+        else:
+            print_color("model not load!", bcolors.FAIL)
 
         self.vonet.cuda()
 
