@@ -1,4 +1,5 @@
 from __future__ import division
+from typing import Dict
 import torch
 import math
 import random
@@ -156,12 +157,15 @@ class SampleNormalize(object):
             self.pose_std = pose_std
         self.flow_norm = flow_norm  # scale factor for flow
 
-    def __call__(self, sample: np.ndarray):
+    def __call__(self, sample: Dict[str, np.ndarray]):
         if "flow" in sample:
             sample["flow"] = sample["flow"] / self.flow_norm
         if "motion" in sample:
             sample["motion"] = sample["motion"] / self.pose_std
         return sample
+    
+    def denormalize(self, flow: np.ndarray, pose: np.ndarray):
+        return flow * self.flow_norm, pose * self.pose_std
 
 
 def tensor2img(tensImg, mean, std):

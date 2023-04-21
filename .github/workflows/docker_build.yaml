@@ -6,7 +6,7 @@ on:
     paths:
       - "docker/*.dockerfile"
       - "docker/*.txt"
-      - "docker/*entrypoint.sh"
+      - "docker/*entrypoint.sh" 
 
 jobs:
   build:
