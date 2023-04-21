@@ -137,14 +137,13 @@ if __name__ == "__main__":
             args.kitti_intrinsics_file
         )
 
-    transform = Compose(
-        [
+    normalize = SampleNormalize(flow_norm=20)  # pose normalize args is omitted
+    transform = Compose([
             CropCenter((args.image_height, args.image_width)),
             DownscaleFlow(),
-            SampleNormalize(flow_norm=20),  # pose normalize args is omitted
+            normalize,
             ToTensor(),
-        ]
-    )
+        ])
 
     intrinsics = CameraIntrinsics(fx, fy, cx, cy)
     tartanair_set = TartanAirDataset(f"{DATASET_DIR / 'TartanAir'}",
@@ -157,8 +156,12 @@ if __name__ == "__main__":
     train_loader = DataLoader(
         train_set, batch_size=args.batch_size, shuffle=True, num_workers=num_workers
     )
+    # Shuffle -> use RPE metric
+    valid_loader = DataLoader(
+        valid_set, batch_size=args.batch_size, shuffle=True, num_workers=num_workers
+    )
 
-    epoch = 10
+    epoch = 1
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     tartanvo = TartanVO(args.model_name)
     model = tartanvo.vonet
@@ -167,10 +170,13 @@ if __name__ == "__main__":
     flow_criterion = nn.MSELoss(reduction="mean")
     pose_criterion = PoseNormLoss(1e-6)
     weight_lambda = 0.1
-    optimizer = optim.SGD(model.parameters(), lr=1e-6)  # train pose
+    lr = 1e-6
+    optimizer = optim.SGD(model.parameters(), lr=lr)  # train pose
 
-    writer = SummaryWriter(
-        f"{LOG_DIR}/{datetime.now():%Y%m%d_%H%M}_{args.model_name}")
+
+    log_folder = LOG_DIR / f"{datetime.now():%Y%m%d_%H%M}_{args.model_name}"
+    train_writer = SummaryWriter(f"{log_folder / 'train'}")
+    valid_writer = SummaryWriter(f"{log_folder / 'valid'}")
 
     model.train()
     best_loss = math.inf
@@ -190,15 +196,12 @@ if __name__ == "__main__":
 
             # Loss
             # Pre-divide by batch size to make it numerically stable
-            batch_flow_loss = flow_criterion(
-                flow, flow_gt)  # /batche_size, scalar
-            batch_pose_loss = pose_criterion(
-                pose, pose_gt
-            ).mean()  # /batche_size, scalar
-            batch_loss = batch_pose_loss  # weight_lambda * batch_flow_loss  +
+            batch_flow_loss = flow_criterion(flow, flow_gt)
+            batch_pose_loss = pose_criterion(pose, pose_gt).mean()
+            batch_loss = weight_lambda * batch_flow_loss + batch_pose_loss
 
             # Total loss
-            # Not accurate (a little bit) if all batch size are not the same
+            # Not accurate (a little bit) if all batch size (=denominator) are not the same
             flow_loss += batch_flow_loss.item()
             pose_loss += batch_pose_loss.item()
             loss += batch_loss.item()
@@ -209,16 +212,59 @@ if __name__ == "__main__":
             optimizer.step()
         # --- After trained an epoch ---
         # Log
-        writer.add_scalar("Flow loss", flow_loss, ep)
-        writer.add_scalar("Pose loss", pose_loss, ep)
-        writer.add_scalar("Loss", loss, ep)
+        train_writer.add_scalar("Flow loss", flow_loss, ep)
+        train_writer.add_scalar("Pose loss", pose_loss, ep)
+        train_writer.add_scalar("Loss", loss, ep)
         print(
             f"Epoch {ep}: flow_loss={flow_loss}\tpose_loss={pose_loss}\tloss={loss}")
 
         # Validation
         # Select based on RPE if no RNN, else ATE
+        flow_loss = pose_loss = loss = 0
+        pose_list = []
         model.eval()
         with torch.no_grad():
+            for sample in tqdm(valid_loader, desc="#Batch", leave=False):
+                # Data
+                img0 = sample["img1"].to(device)
+                img1 = sample["img2"].to(device)
+                intrinsic = sample["intrinsic"].to(device)
+                # Ground truth
+                flow_gt = sample["flow"].to(device)  # N x C x H x W
+                pose_gt = sample["motion"].to(device)  # N x 6
+
+                # Forward
+                flow, pose = model([img0, img1, intrinsic])
+
+                # Loss
+                # Pre-divide by batch size to make it numerically stable
+                batch_flow_loss = flow_criterion(flow, flow_gt)
+                batch_pose_loss = pose_criterion(pose, pose_gt).mean()
+                batch_loss = weight_lambda * batch_flow_loss  + batch_pose_loss
+
+                # Total loss
+                # Not accurate (a little bit) if all batch size (=denominator) are not the same
+                flow_loss += batch_flow_loss.item()
+                pose_loss += batch_pose_loss.item()
+                loss += batch_loss.item()
+
+                # Denormalize to evaluate by metric
+                # No need to detach() under no_grad() context
+                flow_np = flow.cpu().numpy()
+                pose_np = pose.cpu().numpy()
+                flow_np, pose_np = normalize.denormalize(flow_np, pose_np)
+
+                # Gather output to evaluate
+                pose_list.extend(pose_np)
+            # --- After eval an epoch ---
+            # TODO: log hparams
+            # Log loss
+            train_writer.add_scalar("Flow loss", flow_loss, ep)
+            train_writer.add_scalar("Pose loss", pose_loss, ep)
+            train_writer.add_scalar("Loss", loss, ep)
+            print(
+                f"Epoch {ep}: flow_loss={flow_loss}\tpose_loss={pose_loss}\tloss={loss}")
+
             # ses2poses_quat(np.array(motionlist)) # N*6->N*7 (0:3=t, 3:7=q)
             
             # Model checkpoint
@@ -230,6 +276,6 @@ if __name__ == "__main__":
             #         "loss": loss,
             #     }, MODEL_DIR / f"tartanvo_{datetime.now():%Y%m%d_%H%M}.pkl")
 
-    writer.flush()
-    writer.close()
+    train_writer.flush()
+    train_writer.close()
     print("\nFinished!")
