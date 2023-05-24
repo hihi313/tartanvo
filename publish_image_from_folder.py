@@ -81,12 +81,19 @@ class PubImgFolder(object):
         # caminfo.K[5]    = 248.3750000000
 
         # # image info for KTIIT_10
-        caminfo.width   = 1226
-        caminfo.height  = 370
-        caminfo.K[0]    = 707.0912
-        caminfo.K[4]    = 707.0912
-        caminfo.K[2]    = 601.8873
-        caminfo.K[5]    = 183.1104
+        # caminfo.width   = 1226
+        # caminfo.height  = 370
+        # caminfo.K[0]    = 707.0912
+        # caminfo.K[4]    = 707.0912
+        # caminfo.K[2]    = 601.8873
+        # caminfo.K[5]    = 183.1104
+        # # image info for HISLAB
+        caminfo.width   = 640
+        caminfo.height  = 480
+        caminfo.K[0]    = 309.06186961534786
+        caminfo.K[4]    = 309.1327446505413
+        caminfo.K[2]    = 330.92153214915896
+        caminfo.K[5]    = 216.00863692319797
 
         self.caminfo_pub.publish(caminfo)
 
