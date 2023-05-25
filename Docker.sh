@@ -1,9 +1,10 @@
 #!/bin/bash
 
 echo "Sart time=$(date +"%T")"
+IMG_USER="hihi313"
 IMG_NAME="tartanvo"
 IMG_TAG="latest"
-CTNR_NAME="tartanvo_ctnr"
+CTNR_NAME="${IMG_NAME}_ctnr"
 WORKDIR="/app"
 
 VOLUME=""
@@ -82,7 +83,7 @@ do
                 --volume="$PWD:$WORKDIR" \
                 --workdir $WORKDIR \
                 --name $CTNR_NAME \
-                "$IMG_NAME:$IMG_TAG"
+                "$IMG_USER/$IMG_NAME:$IMG_TAG" bash
 
         # Disable tracing
         set +x
